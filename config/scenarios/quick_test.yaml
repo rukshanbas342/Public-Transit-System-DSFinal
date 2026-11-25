@@ -1,0 +1,6 @@
+# Short, fast run for local development and CI-style smoke tests:
+# 3 simulated hours over the morning peak, as fast as the CPU allows.
+time:
+  service_start: "06:30"
+  service_end: "09:30"
+  realtime_seconds_per_sim_minute: 0

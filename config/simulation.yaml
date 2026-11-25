@@ -1,0 +1,111 @@
+# =============================================================================
+# Base simulation configuration.
+#
+# This is the single source of truth for the network, fleet, demand and
+# disruptions. Every value can be changed three ways (later wins):
+#   1. Edit this file.
+#   2. Overlay a scenario file:   --scenario rush_hour   (config/scenarios/*.yaml)
+#   3. Override one value:        --set fleet.capacity=60   or env SIM_SET="fleet.capacity=60;time.seed=7"
+#
+# Units: times are SIMULATED MINUTES unless the key says otherwise.
+# Clock times ("07:30") are time of day within the service day.
+# =============================================================================
+
+run:
+  seed: 42                    # same seed + same config => identical passenger arrivals
+  run_id: null                # null => generated (e.g. "run-20261109-173000-42")
+
+time:
+  service_start: "05:00"      # time of day at sim minute 0
+  service_end: "23:00"        # simulation stops here (18 h = 1080 sim minutes)
+  realtime_seconds_per_sim_minute: 1.0   # 1.0 => 1 s = 1 sim min (~18 min per day). 0 => as fast as possible
+  schedule_poll_minutes: 1    # how often the simulator checks the DB for approved schedule changes
+
+fleet:
+  size: 12
+  capacity: 40                # seats + standing, per bus
+  deadhead_minutes: 10        # time for a reserve bus to drive (empty) to a route terminal
+  dwell:
+    base_seconds: 20          # door open/close at a stop
+    per_boarding_seconds: 3
+    per_alighting_seconds: 2
+
+# Each route is a loop: terminal (first stop) -> ... -> last stop -> back to terminal.
+# travel_to_next = minutes from this stop to the next one (the last stop's value
+# is the trip back to the terminal). Round trip = sum(travel_to_next) + dwell.
+# weight scales how many passengers appear at a stop relative to the others.
+routes:
+  - id: R1
+    name: "Route A - Lakeshore"
+    initial_interval: 20      # minutes between departures at the start of the day
+    initial_buses: 3
+    popularity: 1.3           # relative route demand (also seeds historical demand)
+    stops:
+      - { id: R1-S1, name: "Harbour Terminal",   travel_to_next: 7, weight: 1.6 }
+      - { id: R1-S2, name: "Maple Ave",          travel_to_next: 6, weight: 1.0 }
+      - { id: R1-S3, name: "Civic Centre",       travel_to_next: 7, weight: 1.4 }
+      - { id: R1-S4, name: "Pier Street",        travel_to_next: 6, weight: 0.8 }
+      - { id: R1-S5, name: "Beacon Park",        travel_to_next: 7, weight: 0.9 }
+      - { id: R1-S6, name: "Lighthouse Rd",      travel_to_next: 6, weight: 0.7 }
+      - { id: R1-S7, name: "Marina Plaza",       travel_to_next: 7, weight: 1.2 }
+      - { id: R1-S8, name: "Dockside Loop",      travel_to_next: 7, weight: 0.8 }
+
+  - id: R2
+    name: "Route B - University"
+    initial_interval: 20
+    initial_buses: 3
+    popularity: 1.0
+    stops:
+      - { id: R2-S1, name: "Central Station",    travel_to_next: 6, weight: 1.5 }
+      - { id: R2-S2, name: "Library Square",     travel_to_next: 7, weight: 1.0 }
+      - { id: R2-S3, name: "North Campus",       travel_to_next: 6, weight: 1.6 }
+      - { id: R2-S4, name: "Research Park",      travel_to_next: 7, weight: 0.9 }
+      - { id: R2-S5, name: "Residence Hall",     travel_to_next: 7, weight: 1.1 }
+      - { id: R2-S6, name: "Athletics Centre",   travel_to_next: 6, weight: 0.7 }
+      - { id: R2-S7, name: "Simcoe Street",      travel_to_next: 7, weight: 0.8 }
+      - { id: R2-S8, name: "Founders Gate",      travel_to_next: 7, weight: 0.8 }
+
+  - id: R3
+    name: "Route C - Industrial"
+    initial_interval: 20
+    initial_buses: 3
+    popularity: 0.7
+    stops:
+      - { id: R3-S1, name: "Eastgate Terminal",  travel_to_next: 7, weight: 1.3 }
+      - { id: R3-S2, name: "Foundry Lane",       travel_to_next: 6, weight: 0.8 }
+      - { id: R3-S3, name: "Logistics Hub",      travel_to_next: 7, weight: 1.1 }
+      - { id: R3-S4, name: "Rail Yard",          travel_to_next: 7, weight: 0.6 }
+      - { id: R3-S5, name: "Power Plant Rd",     travel_to_next: 6, weight: 0.6 }
+      - { id: R3-S6, name: "Warehouse Row",      travel_to_next: 7, weight: 0.9 }
+      - { id: R3-S7, name: "Mill Creek",         travel_to_next: 6, weight: 0.7 }
+      - { id: R3-S8, name: "Quarry Road",        travel_to_next: 7, weight: 0.6 }
+
+demand:
+  # Average passengers per minute arriving at a stop with weight 1.0 on a route
+  # with popularity 1.0, when the time-of-day multiplier is 1.0.
+  base_rate_per_stop: 0.15
+  # Multiplier for each hour of the day (index 0 = 00:00-00:59 ... 23 = 23:00).
+  # Shape: morning peak 7-9, evening peak 16-18, quiet midday and late evening.
+  hourly_profile: [0.1, 0.1, 0.1, 0.1, 0.2, 0.5, 1.0, 2.0, 2.4, 1.6,
+                   1.0, 0.9, 1.0, 0.9, 1.0, 1.3, 2.0, 2.4, 1.8, 1.1,
+                   0.8, 0.6, 0.4, 0.2]
+  # Extra multipliers on top of the profile, for a route and a time window.
+  # Scenarios use these to create unexpected demand (e.g. an event lets out).
+  surges: []
+  #  - { route: R1, start: "07:00", end: "09:00", multiplier: 2.0 }
+
+disruptions:
+  delays:
+    probability_per_segment: 0.05   # chance a bus is delayed between two stops
+    min_minutes: 1
+    max_minutes: 5
+  random_breakdowns:
+    probability_per_trip: 0.0       # chance a bus breaks down during a trip
+    min_minutes: 10
+    max_minutes: 30
+  scheduled_breakdowns: []          # deterministic breakdowns for demos
+  #  - { bus: B04, at: "08:15", minutes: 25 }
+
+publishing:
+  sink: rabbitmq              # rabbitmq | jsonl | memory | none
+  jsonl_path: "out/events.jsonl"

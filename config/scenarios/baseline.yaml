@@ -1,0 +1,3 @@
+# Baseline: the base config unchanged. Use for the fixed-schedule control run.
+# (An empty overlay is valid; it exists so experiments can name it explicitly.)
+{}

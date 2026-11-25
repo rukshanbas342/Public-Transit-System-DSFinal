@@ -1,0 +1,6 @@
+# Demo scenario: an unexpected surge on Route A during the morning peak.
+# The adaptive scheduler should recommend a shorter interval for R1 and pull
+# a bus from the reserve pool (or a quiet route).
+demand:
+  surges:
+    - { route: R1, start: "07:00", end: "09:30", multiplier: 2.0 }

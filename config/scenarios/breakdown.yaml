@@ -1,0 +1,7 @@
+# Demo scenario: a bus on Route B breaks down in the morning peak, plus a
+# higher random-delay rate. Shows the system reacting to service disruptions.
+disruptions:
+  delays:
+    probability_per_segment: 0.12
+  scheduled_breakdowns:
+    - { bus: B04, at: "07:40", minutes: 30 }

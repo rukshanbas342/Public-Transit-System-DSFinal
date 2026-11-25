@@ -1,0 +1,15 @@
+# Developer overlay: publish PostgreSQL and RabbitMQ (AMQP) on the host so services can run
+# outside Docker (python -m transit.worker, uvicorn, tests against Postgres, psql, ...).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up postgres rabbitmq migrate
+#   (or: make infra)
+#
+# Not needed to run or evaluate the project: the base file only publishes the dashboard
+# (8000) and the RabbitMQ UI (15672), so nothing clashes with a local PostgreSQL.
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+  rabbitmq:
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"

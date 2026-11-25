@@ -1,0 +1,41 @@
+# =============================================================================
+# Demand analysis & scheduling parameters (read by transit/scheduler).
+# Values come straight from the proposal; tune them here, not in code.
+# =============================================================================
+
+evaluation:
+  every_minutes: 5            # re-evaluate each route every 5 sim minutes
+  window_minutes: 15          # using the last 15 sim minutes of data
+  ema_alpha: 0.4              # momentum: weight of the newest reading in the EMA
+  poll_seconds: 2             # real seconds between checks of the simulated clock
+
+demand_score:                 # score = sum(weight * variable) + offsets
+  weights:
+    arrivals_per_minute: 1.0
+    avg_occupancy_ratio: 2.0  # occupancy / capacity, 0..1
+    denied_per_minute: 3.0    # passengers left behind because the bus was full
+  offsets:
+    time_of_day: 0.5          # added when a known peak starts within `anticipation_minutes`
+    anticipation_minutes: 20
+    popularity: 1.0           # multiplied by (current demand / historical average) - 1
+    peak_factor: 1.5          # an hour is a known peak when its historical demand >= 1.5 x the daily mean
+
+peak_detection:               # hysteresis: two thresholds so labels don't flicker
+  upper_threshold: 3.0        # smoothed score above this => peak
+  lower_threshold: 1.5        # smoothed score below this => off-peak
+
+interval:
+  target_load: 0.8            # interval = 60 / (pax_per_hour / (capacity * target_load))
+  min_minutes: 5
+  max_minutes: 30
+  min_change_minutes: 2       # ignore recommendations that change the interval by less
+
+fleet:
+  reserve_target: 1           # try to keep at least this many buses unassigned
+  cooldown: round_trip        # wait one round trip after a change ("round_trip" or minutes)
+
+operator:
+  auto_approve: false         # true for experiments (repeatable runs)
+  decline_suppression: cooldown   # how long a declined recommendation stays paused
+  escalation_factor: 1.25     # re-suggest early if demand rises 25% above when declined
+  pending_minutes: 30         # keep a pending suggestion unchanged this long so the operator can decide

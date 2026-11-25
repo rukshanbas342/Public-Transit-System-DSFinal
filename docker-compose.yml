@@ -1,0 +1,133 @@
+# =============================================================================
+# Public Transit System - full stack on one machine.
+#
+#   docker compose up --build                 everything; dashboard at http://localhost:8000
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#                                             also publishes PostgreSQL (5432) and AMQP (5672)
+#   docker compose up --build --scale worker=3
+#
+# Every value below has a default; override in .env (copy .env.example).
+# =============================================================================
+
+x-python-service: &python-service
+  build:
+    context: .
+    dockerfile: docker/python.Dockerfile
+  image: transit-python:latest
+  environment: &python-env
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-transit}:${POSTGRES_PASSWORD:-transit}@postgres:5432/${POSTGRES_DB:-transit}
+    RABBITMQ_URL: amqp://${RABBITMQ_USER:-transit}:${RABBITMQ_PASSWORD:-transit}@rabbitmq:5672/%2F
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    SIM_SCENARIO: ${SIM_SCENARIO:-baseline}
+    SIM_SEED: ${SIM_SEED:-42}
+    SIM_SPEED: ${SIM_SPEED:-1.0}
+    SIM_SET: ${SIM_SET:-}
+  volumes:
+    - ./config:/app/config:ro      # edit YAML config without rebuilding images
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-transit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-transit}
+      POSTGRES_DB: ${POSTGRES_DB:-transit}
+    # No host port by default, so a PostgreSQL already running on the machine can't clash.
+    # Developers who need it: add -f docker-compose.dev.yml (see that file).
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-transit} -d ${POSTGRES_DB:-transit}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-transit}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-transit}
+    ports:
+      - "${RABBITMQ_UI_PORT:-15672}:15672"   # management UI: http://localhost:15672 (optional)
+      # AMQP (5672) is only published by docker-compose.dev.yml
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      # check_port_connectivity passes only once the AMQP listener accepts connections
+      # (plain `ping` passes earlier, so the first worker connect could be refused).
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # One-shot: apply migrations, then seed routes/stops/buses and reset schedules.
+  migrate:
+    <<: *python-service
+    command: ["sh", "-c", "alembic upgrade head && python -m transit.db.seed"]
+    environment:
+      <<: *python-env
+      OPERATOR_USERNAME: ${OPERATOR_USERNAME:-operator}
+      OPERATOR_PASSWORD: ${OPERATOR_PASSWORD:-operator}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  simulator:
+    <<: *python-service
+    command: ["python", "-m", "transit.simulator"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure   # a finished run exits 0 and stays stopped; a crash restarts
+
+  worker:
+    <<: *python-service
+    command: ["python", "-m", "transit.worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  scheduler:
+    <<: *python-service
+    command: ["python", "-m", "transit.scheduler"]
+    environment:
+      <<: *python-env
+      AUTO_APPROVE: ${AUTO_APPROVE:-false}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: transit-api:latest
+    environment:
+      <<: *python-env
+      API_SECRET_KEY: ${API_SECRET_KEY:-change-me}
+    volumes:
+      - ./config:/app/config:ro
+    ports:
+      - "${API_PORT:-8000}:8000"            # dashboard + API: http://localhost:8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  rabbitdata:
