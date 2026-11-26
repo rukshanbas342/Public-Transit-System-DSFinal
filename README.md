@@ -74,6 +74,7 @@ docker compose up --build
 | --- | --- |
 | Multiple workers | Start with `docker compose up --build --scale worker=3` and check the worker count in the dashboard. |
 | Recovery after a worker stops | While the simulation is running, use a second terminal to run `docker compose stop worker`. Watch the backlog grow, then run `docker compose start worker` and watch it drain. |
+| Scheduler approves its own suggestions | `AUTO_APPROVE=true docker compose up --build` |
 
 For direct inspection, open the [FastAPI docs](http://localhost:8000/docs) or the [RabbitMQ management UI](http://localhost:15672). Sign into RabbitMQ with username `transit` and password `transit`, then look for `transit.events.process` under **Queues**.
 
